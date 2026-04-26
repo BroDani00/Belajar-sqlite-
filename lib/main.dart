@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart'; // Perbaikan: Cukup sqflite.dart
+import 'package:path/path.dart' as p; // Perbaikan: hapus titik koma di tengah
 
 void main() {
   runApp(const MainApp());
@@ -13,13 +15,85 @@ class MainApp extends StatelessWidget {
   }
 }
 
+class DatabaseHelper {
+  static Database? _database;
+
+  static Future<Database> get database async {
+    // Perbaikan: async (bukan asaync)
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  static Future<Database> _initDatabase() async {
+    String path = p.join(await getDatabasesPath(), 'user_database.db');
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        return db.execute('''
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nama TEXT NOT NULL,
+            umur INTEGER NOT NULL
+          )
+        ''');
+      },
+    );
+  }
+
+  //create
+  static Future<void> insertData(UserModel userModel) async {
+    final db = await database;
+    Map<String, dynamic> user = userModel.toJson();
+    // Perbaikan: Urutan parameter insert adalah (table, values)
+    await db.insert(
+      "users",
+      user,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  //read
+  static Future<List<UserModel>> getData() async {
+    // Perbaikan: List<UserModel>
+    final db = await database;
+    // Perbaikan: Query mengembalikan List Map
+    List<Map<String, dynamic>> result = await db.query("users");
+    // Perbaikan: Mapping data dari Map ke Model
+    return result.map((data) => UserModel.fromJson(data)).toList();
+  }
+
+  //update
+  static Future<int> updateData(int id, UserModel userModel) async {
+    final db = await database;
+    var user = userModel.toJson();
+    user.remove("id"); // Pastikan ID tidak ikut diupdate di body
+
+    return await db.update("users", user, where: "id = ?", whereArgs: [id]);
+  } // Perbaikan: Tambah kurung tutup fungsi
+
+  //delete
+  static Future<int> deleteData(int id) async {
+    final db = await database;
+    return await db.delete("users", where: "id = ?", whereArgs: [id]);
+  }
+}
+
 class UserModel {
   int? id;
   String nama;
   int umur;
 
-  // Nama konstruktor harus sama dengan nama Class
   UserModel({this.id, required this.nama, required this.umur});
+
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    return UserModel(id: json['id'], nama: json['nama'], umur: json['umur']);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {'id': id, 'nama': nama, 'umur': umur};
+  }
 }
 
 class ListUserDataPage extends StatefulWidget {
@@ -30,13 +104,20 @@ class ListUserDataPage extends StatefulWidget {
 }
 
 class _ListUserDataPageState extends State<ListUserDataPage> {
-  // Menggunakan UserModel secara konsisten
-  List<UserModel> userList = [
-    UserModel(id: 1, nama: "1", umur: 10),
-    UserModel(id: 2, nama: "2", umur: 20),
-    UserModel(id: 3, nama: "3", umur: 30),
-    UserModel(id: 4, nama: "4", umur: 40),
-  ];
+  List<UserModel> userList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadData();
+  }
+
+  void _reloadData() async {
+    var users = await DatabaseHelper.getData();
+    setState(() {
+      userList = users;
+    });
+  }
 
   TextEditingController nameController = TextEditingController();
   TextEditingController umurController = TextEditingController();
@@ -77,7 +158,12 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
-                  _save(id);
+                  // Perbaikan: Kirim data dari controller ke fungsi save
+                  _save(
+                    id,
+                    nameController.text,
+                    int.parse(umurController.text),
+                  );
                 },
                 child: Text(id == null ? "tambah" : "perbaharui"),
               ),
@@ -88,25 +174,18 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
     );
   }
 
-  void _save(int? id) {
+  void _save(int? id, String nama, int umur) async {
+    // Perbaikan: Definisi newUser yang benar
+    var newUser = UserModel(id: id, nama: nama, umur: umur);
+
     if (id != null) {
-      var user = userList.firstWhere((data) => data.id == id);
-      setState(() {
-        user.nama = nameController.text;
-        user.umur = int.parse(umurController.text);
-      });
+      await DatabaseHelper.updateData(id, newUser);
     } else {
-      var nextId = userList.isEmpty ? 1 : userList.last.id! + 1;
-      var newUser = UserModel(
-        id: nextId,
-        nama: nameController.text,
-        umur: int.parse(umurController.text),
-      );
-      setState(() {
-        userList.add(newUser);
-      });
+      await DatabaseHelper.insertData(newUser);
     }
-    Navigator.pop(context);
+
+    _reloadData();
+    Navigator.pop(context); // Perbaikan: Navigator (N besar)
   }
 
   void _delete(int id) {
@@ -121,10 +200,9 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
             child: const Text("batal"),
           ),
           TextButton(
-            onPressed: () {
-              setState(() {
-                userList.removeWhere((data) => data.id == id);
-              });
+            onPressed: () async {
+              await DatabaseHelper.deleteData(id);
+              _reloadData();
               Navigator.pop(context);
             },
             child: const Text("hapus"),
