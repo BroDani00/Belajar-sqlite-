@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart'; // Perbaikan: Cukup sqflite.dart
-import 'package:path/path.dart' as p; // Perbaikan: hapus titik koma di tengah
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   runApp(const MainApp());
@@ -46,7 +46,7 @@ class DatabaseHelper {
   static Future<void> insertData(UserModel userModel) async {
     final db = await database;
     Map<String, dynamic> user = userModel.toJson();
-    // Perbaikan: Urutan parameter insert adalah (table, values)
+
     await db.insert(
       "users",
       user,
@@ -56,11 +56,8 @@ class DatabaseHelper {
 
   //read
   static Future<List<UserModel>> getData() async {
-    // Perbaikan: List<UserModel>
     final db = await database;
-    // Perbaikan: Query mengembalikan List Map
     List<Map<String, dynamic>> result = await db.query("users");
-    // Perbaikan: Mapping data dari Map ke Model
     return result.map((data) => UserModel.fromJson(data)).toList();
   }
 
@@ -68,10 +65,10 @@ class DatabaseHelper {
   static Future<int> updateData(int id, UserModel userModel) async {
     final db = await database;
     var user = userModel.toJson();
-    user.remove("id"); // Pastikan ID tidak ikut diupdate di body
+    user.remove("id");
 
     return await db.update("users", user, where: "id = ?", whereArgs: [id]);
-  } // Perbaikan: Tambah kurung tutup fungsi
+  }
 
   //delete
   static Future<int> deleteData(int id) async {
@@ -158,7 +155,6 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: () {
-                  // Perbaikan: Kirim data dari controller ke fungsi save
                   _save(
                     id,
                     nameController.text,
@@ -175,7 +171,6 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
   }
 
   void _save(int? id, String nama, int umur) async {
-    // Perbaikan: Definisi newUser yang benar
     var newUser = UserModel(id: id, nama: nama, umur: umur);
 
     if (id != null) {
@@ -185,7 +180,7 @@ class _ListUserDataPageState extends State<ListUserDataPage> {
     }
 
     _reloadData();
-    Navigator.pop(context); // Perbaikan: Navigator (N besar)
+    Navigator.pop(context);
   }
 
   void _delete(int id) {
